@@ -22,23 +22,39 @@ import io
 # Load environment variables
 load_dotenv()
 
+# Vercel serverless: only /tmp is writable
+IS_VERCEL = os.environ.get('VERCEL') == '1'
+if IS_VERCEL:
+    UPLOAD_DIR = '/tmp/uploads'
+    OUTPUT_DIR = '/tmp/outputs'
+else:
+    UPLOAD_DIR = 'uploads'
+    OUTPUT_DIR = 'outputs'
+
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['OUTPUT_FOLDER'] = 'outputs'
+app.config['UPLOAD_FOLDER'] = UPLOAD_DIR
+app.config['OUTPUT_FOLDER'] = OUTPUT_DIR
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'PNG', 'JPG', 'JPEG'}
 
-# Initialize OpenAI client
-openai_api_key = os.getenv('OPEN_AI_API_KEY')
-if not openai_api_key:
-    raise ValueError("OPEN_AI_API_KEY not found in environment variables")
+# OpenAI client: lazy init so app loads even if OPEN_AI_API_KEY is missing (e.g. Vercel env not set)
+_openai_client = None
 
-client = OpenAI(api_key=openai_api_key)
+def get_openai_client():
+    """Return OpenAI client; raise only when actually used without API key."""
+    global _openai_client
+    if _openai_client is not None:
+        return _openai_client
+    key = os.getenv('OPEN_AI_API_KEY')
+    if not key:
+        raise ValueError("OPEN_AI_API_KEY not found. Set it in Vercel Project Settings → Environment Variables.")
+    _openai_client = OpenAI(api_key=key)
+    return _openai_client
 
-# Create necessary directories
+# Create necessary directories (/tmp on Vercel is writable)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 
@@ -84,7 +100,7 @@ def extract_with_openai(image_path):
             else:
                 mime_type = 'image/jpeg'
             
-            response = client.chat.completions.create(
+            response = get_openai_client().chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {
@@ -499,7 +515,7 @@ def extract_bilan_with_openai(image_path):
             else:
                 mime_type = 'image/jpeg'
             
-            response = client.chat.completions.create(
+            response = get_openai_client().chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {
