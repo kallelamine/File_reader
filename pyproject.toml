@@ -1,0 +1,14 @@
+[project]
+name = "file-reader"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "Flask>=3.0.0",
+    "openpyxl>=3.1.2",
+    "python-dotenv>=1.0.0",
+    "openai>=1.3.0",
+    "Werkzeug>=3.0.1",
+]
+
+[project.scripts]
+app = "app:app"
