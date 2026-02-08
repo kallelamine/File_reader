@@ -184,7 +184,11 @@
                     <div style="margin-top: 10px;">
                         {% for xlsx_file in result.xlsx_files %}
                         <div class="xlsx-file">
+                            {% if download_data and xlsx_file in download_data %}
+                            <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{{ download_data[xlsx_file] }}" class="download-link" download="{{ xlsx_file }}">
+                            {% else %}
                             <a href="/download/{{ result.batch_id }}/{{ xlsx_file }}" class="download-link">
+                            {% endif %}
                                 {% if '__IE_VISION_360' in xlsx_file %}
                                     🔍 {{ xlsx_file }}
                                 {% elif '__ACTES_SOCIETES' in xlsx_file or '__BIENS_IMMO' in xlsx_file %}
@@ -228,7 +232,11 @@
         
         <div class="actions">
             {% if results and batch_id %}
+            {% if zip_base64 %}
+            <a href="data:application/zip;base64,{{ zip_base64 }}" class="btn" download="batch_{{ batch_id }}.zip">📦 Download All as ZIP</a>
+            {% else %}
             <a href="/download_all/{{ batch_id }}" class="btn">📦 Download All as ZIP</a>
+            {% endif %}
             {% endif %}
             <a href="/" class="btn btn-secondary">🔄 Upload More Files</a>
         </div>

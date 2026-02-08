@@ -22,7 +22,7 @@ import io
 # Load environment variables
 load_dotenv()
 
-# Vercel serverless: only /tmp is writable
+# Vercel serverless: only /tmp is writable; cwd may not be project root
 IS_VERCEL = os.environ.get('VERCEL') == '1'
 if IS_VERCEL:
     UPLOAD_DIR = '/tmp/uploads'
@@ -31,7 +31,9 @@ else:
     UPLOAD_DIR = 'uploads'
     OUTPUT_DIR = 'outputs'
 
-app = Flask(__name__)
+# Use absolute path for templates so they're found on Vercel (where cwd can differ)
+_root_dir = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, template_folder=os.path.join(_root_dir, 'templates'))
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 app.config['UPLOAD_FOLDER'] = UPLOAD_DIR
@@ -1066,7 +1068,39 @@ def upload_files():
                 'error': 'Invalid file type. Only JPG/PNG allowed.'
             })
     
-    return render_template('results.html', results=results, errors=errors, batch_id=batch_id)
+    # On Vercel, /tmp is not shared between requests: build ZIP and file base64 in same response
+    zip_base64 = None
+    download_data = None  # dict filename -> base64 for individual files
+    if IS_VERCEL and results and batch_id:
+        try:
+            batch_folder = os.path.join(app.config['OUTPUT_FOLDER'], batch_id)
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for root, dirs, files in os.walk(batch_folder):
+                    for f in files:
+                        path = os.path.join(root, f)
+                        zf.write(path, f)
+            zip_buffer.seek(0)
+            zip_base64 = base64.b64encode(zip_buffer.read()).decode('utf-8')
+            # Per-file base64 so individual download links work in same request
+            download_data = {}
+            for root, dirs, files in os.walk(batch_folder):
+                for f in files:
+                    path = os.path.join(root, f)
+                    with open(path, 'rb') as fp:
+                        download_data[f] = base64.b64encode(fp.read()).decode('utf-8')
+        except Exception as e:
+            print(f"Vercel inline download build failed: {e}")
+    
+    return render_template(
+        'results.html',
+        results=results,
+        errors=errors,
+        batch_id=batch_id,
+        zip_base64=zip_base64,
+        download_data=download_data,
+        is_vercel=IS_VERCEL,
+    )
 
 
 @app.route('/download/<batch_id>/<filename>')
